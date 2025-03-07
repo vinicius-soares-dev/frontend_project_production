@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import {
   AppBar,
   Toolbar,
@@ -17,6 +18,7 @@ import {
   Divider,
   Box,
   Paper,
+  Button,
 } from '@mui/material';
 import {
   People,
@@ -25,10 +27,16 @@ import {
   Menu,
   ChevronLeft,
   AccountCircle,
+  CalendarMonth,
+  HomeWork
 } from '@mui/icons-material';
 import EmployeesTable from '../components/EmployeesTable';
 import CreateEmployeeForm from '../components/CreateEmployeeForm';
 import DepartmentsTable from '../components/Departments';
+import WeeklySchedule from '../components/Calendar';
+import CreateDepartmentForm from '../components/CreateDepartment';
+import ProductionOrdersTable from '../components/ServiceOrder';
+import ServiceOrderList from '../components/ViewServiceOrders';
 
 const theme = createTheme({
   palette: {
@@ -83,6 +91,18 @@ const AdminDashboard = () => {
   const [selectedMenu, setSelectedMenu] = useState('employees');
   const [drawerOpen, setDrawerOpen] = useState(true);
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const navigate = useNavigate();
+  const [roleChecked, setRoleChecked] = useState(false);
+
+  useEffect(() => {
+    if(localStorage.getItem('role') !== 'admin') {
+      navigate('/');
+    } else {
+      setRoleChecked(true);
+    }
+  }, [navigate]);
+
+  if(!roleChecked) return null;
 
   const menuItems = [
     {
@@ -105,6 +125,21 @@ const AdminDashboard = () => {
       icon: <Add />,
       value: 'createDepartment',
     },
+    {
+      text: 'Calendário',
+      icon: <CalendarMonth />,
+      value: 'calendarMonth',
+    },
+    {
+      text: 'Ordem de Serviço',
+      icon: <HomeWork />,
+      value: 'orderService'
+    },
+    {
+      text: 'Nova OS',
+      icon: <Add />,
+      value:'os'
+    }
   ];
 
   const renderContent = () => {
@@ -115,15 +150,30 @@ const AdminDashboard = () => {
         return <CreateEmployeeForm />;
       case 'departments':
         return <DepartmentsTable />;
+      case 'calendarMonth':
+        return <WeeklySchedule />;
+      case 'createDepartment':
+        return <CreateDepartmentForm />;
+      case 'orderService':
+        return <ServiceOrderList />;
+      case 'os':
+        return <ProductionOrdersTable />;
       default:
         return <EmployeesTable />;
     }
   };
 
+  const logout = () => {
+    localStorage.removeItem('role');
+    setTimeout(() => {
+      window.location.href = '/'
+    }, 1000);
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Box sx={{ display: 'flex' }}>
+      <Box sx={{ display: 'flex', alignContent: 'center', justifyContent: 'center', alignItems: 'center' }}>
         <AppBar
           position="fixed"
           sx={{
@@ -132,7 +182,7 @@ const AdminDashboard = () => {
             boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
           }}
         >
-          <Toolbar>
+          <Toolbar sx={{ display: 'flex', justifyContent: 'space-between'}}>
             <IconButton
               color="inherit"
               edge="start"
@@ -144,6 +194,12 @@ const AdminDashboard = () => {
             <Typography variant="h6" noWrap component="div">
               Painel Administrativo
             </Typography>
+            <Button 
+              onClick={() => logout()}
+              sx={{ padding: '1rem, 2rem', color: 'fff'}}
+            >
+              Sair
+            </Button>
           </Toolbar>
         </AppBar>
 

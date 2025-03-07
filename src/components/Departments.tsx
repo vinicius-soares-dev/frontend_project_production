@@ -20,12 +20,11 @@ import {
   DialogActions,
   IconButton,
 } from '@mui/material';
-import { Edit,  Close } from '@mui/icons-material';
+import { Edit,  Close, Delete } from '@mui/icons-material';
 
 interface Department {
   id: number;
   name: string;
-  production_order: number;
 }
 
 
@@ -44,7 +43,7 @@ const DepartmentsTable = () => {
     try {
       setLoading(true);
       const response = await fetch(
-        `http://localhost:3001/api/departments?page=${page + 1}&limit=${rowsPerPage}&search=${searchTerm}`,
+        `https://toprint-project.vercel.app/api/departments?page=${page + 1}&limit=${rowsPerPage}&search=${searchTerm}`,
         { headers: { 'Accept': 'application/json' } }
       );
 
@@ -97,7 +96,7 @@ const DepartmentsTable = () => {
     if (!editingDepartment) return;
 
     try {
-      const response = await fetch(`http://localhost:3001/api/departments/${editingDepartment.id}`, {
+      const response = await fetch(`https://toprint-project.vercel.app/api/departments/${editingDepartment.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editingDepartment),
@@ -112,27 +111,29 @@ const DepartmentsTable = () => {
     }
   };
 
-  // const handleDelete = async (id: number) => {
-  //   try {
-  //     const confirmDelete = window.confirm('Tem certeza que deseja excluir este departamento?');
-  //     if (!confirmDelete) return;
+  const handleDelete = async (id: number) => {
+    try {
+      const confirmDelete = window.confirm('Tem certeza que deseja excluir este departamento?');
+      if (!confirmDelete) return;
   
-  //     const response = await fetch(`http://localhost:3001/api/departments/${id}`, {
-  //       method: 'DELETE',
-  //     });
+      const response = await fetch(`https://toprint-project.vercel.app/api/departments/${id}`, {
+        method: 'DELETE',
+      });
   
-  //     if (!response.ok) {
-  //       const errorData = await response.json();
-  //       throw new Error(errorData.message || 'Erro ao excluir departamento');
-  //     }
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Erro ao excluir departamento');
+      }
       
-  //     setDepartments(prev => prev.filter(department => department.id !== id));
-  //     setTotal(prev => prev - 1);
-  //   } catch (err) {
-  //     const errorMessage = err instanceof Error ? err.message : 'Erro ao excluir';
-  //     setError(errorMessage);
-  //   }
-  // };
+      // Atualiza o estado local
+      setDepartments(prev => prev.filter(department => department.id !== id));
+      setTotal(prev => prev - 1);
+      
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao excluir';
+      setError(errorMessage);
+    }
+  };
 
   const handleChangePage = (_event: unknown, newPage: number) => {
     setPage(newPage);
@@ -175,7 +176,6 @@ const DepartmentsTable = () => {
                 <TableRow>
                   <TableCell sx={{ fontWeight: '600' }}>ID</TableCell>
                   <TableCell sx={{ fontWeight: '600' }}>Nome</TableCell>
-                  <TableCell sx={{ fontWeight: '600' }}>Ordem de Produção</TableCell>
                   <TableCell sx={{ fontWeight: '600' }}>Ações</TableCell>
                 </TableRow>
               </TableHead>
@@ -185,7 +185,7 @@ const DepartmentsTable = () => {
                   <TableRow key={department.id}>
                     <TableCell>{department.id}</TableCell>
                     <TableCell>{department.name}</TableCell>
-                    <TableCell>{department.production_order}</TableCell>
+
                     <TableCell>
                       <Button
                         variant="outlined"
@@ -194,6 +194,14 @@ const DepartmentsTable = () => {
                         onClick={() => handleEditClick(department)}
                       >
                         Editar
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        startIcon={<Delete />}
+                        onClick={() => handleDelete(department.id)}
+                      >
+                        Excluir
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -241,15 +249,6 @@ const DepartmentsTable = () => {
                 onChange={(e) => setEditingDepartment({
                   ...editingDepartment,
                   name: e.target.value
-                })}
-              />
-              <TextField
-                label="Ordem de Produção"
-                fullWidth
-                value={editingDepartment.production_order}
-                onChange={(e) => setEditingDepartment({
-                  ...editingDepartment,
-                  production_order: Number(e.target.value)
                 })}
               />
             </Box>

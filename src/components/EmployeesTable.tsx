@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Table,
   TableBody,
@@ -19,17 +19,9 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   IconButton,
 } from '@mui/material';
-import { Edit, Delete, Close  } from '@mui/icons-material';
-
-interface WorkSchedule {
-  [key: string]: string[];
-}
+import { Edit, Delete, Close } from '@mui/icons-material';
 
 interface Employee {
   id: number;
@@ -39,57 +31,17 @@ interface Employee {
   work_schedule: string;
 }
 
-interface Department {
+interface ServiceOrder {
   id: number;
-  name: string;
+  departments: {
+    department_name: string;
+    collaborators: number[];
+  }[];
 }
-
-// 
-const formatWorkSchedule = (scheduleString: string) => {
-  try {
-    const schedule: WorkSchedule = JSON.parse(scheduleString);
-    const daysMap: { [key: string]: string } = {
-      seg: 'Segunda',
-      ter: 'Terça',
-      qua: 'Quarta',
-      qui: 'Quinta',
-      sex: 'Sexta',
-      sab: 'Sábado',
-      dom: 'Domingo'
-    };
-
-    return Object.entries(schedule).map(([day, times]) => (
-      <Box key={day} sx={{ mb: 1 }}>
-        <Typography variant="subtitle2" color="textSecondary">
-          {daysMap[day] || day.toUpperCase()}:
-        </Typography>
-        {times.map((time, index) => (
-          <Chip
-            key={index}
-            label={time}
-            color="primary"
-            size="small"
-            sx={{ mr: 1, mt: 0.5 }}
-          />
-        ))}
-      </Box>
-    ));
-  } catch (error) {
-    console.error(error);
-    return (
-      <Chip
-        label="Formato inválido"
-        color="error"
-        variant="outlined"
-        size="small"
-      />
-    );
-  }
-};
 
 const EmployeesTable = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
+  const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [page, setPage] = useState(0);
@@ -98,11 +50,12 @@ const EmployeesTable = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
 
+  // Busca os colaboradores
   const fetchEmployees = useCallback(async () => {
     try {
       setLoading(true);
       const response = await fetch(
-        `http://localhost:3001/api/employee?page=${page + 1}&limit=${rowsPerPage}&search=${searchTerm}`,
+        `https://toprint-project.vercel.app/api/employee?page=${page + 1}&limit=${rowsPerPage}&search=${searchTerm}`,
         { headers: { 'Accept': 'application/json' } }
       );
 
@@ -143,64 +96,71 @@ const EmployeesTable = () => {
     }
   }, [page, rowsPerPage, searchTerm]);
 
+  // Busca as ordens de serviço
+  const fetchServiceOrders = useCallback(async () => {
+    try {
+      const response = await fetch('https://toprint-project.vercel.app/api/service-orders/');
+      if (!response.ok) throw new Error('Erro ao buscar ordens de serviço');
+      const data = await response.json();
+      setServiceOrders(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao buscar ordens de serviço');
+    }
+  }, []);
+
   useEffect(() => {
-    const fetchDepartments = async () => {
-      try {
-        const response = await fetch('http://localhost:3001/api/departments');
-        const data = await response.json();
-        setDepartments(data);
-      } catch (error) {
-        console.error('Erro ao buscar departamentos:', error);
-      }
+    const fetchAllData = async () => {
+      await fetchEmployees();
+      await fetchServiceOrders();
     };
+    fetchAllData();
+  }, [fetchEmployees, fetchServiceOrders]);
+
+  // Calcula colaboradores ocupados
+  const busyCollaborators = useMemo(() => {
+    const ids = new Set<number>();
+    serviceOrders.forEach(order => {
+      order.departments.forEach(dept => {
+        dept.collaborators.forEach(id => ids.add(id));
+      });
+    });
+    return ids;
+  }, [serviceOrders]);
+
+  const employeeDepartments = useMemo(() => {
+    const departmentsMap: Record<number, string[]> = {};
     
-    fetchEmployees();
-    fetchDepartments();
-  }, [fetchEmployees]);
+    serviceOrders.forEach(order => {
+      order.departments.forEach(dept => { // Corrigido typo 'depts' para 'departments'
+        dept.collaborators.forEach(employeeId => {
+          if (!departmentsMap[employeeId]) {
+            departmentsMap[employeeId] = [];
+          }
+          if (!departmentsMap[employeeId].includes(dept.department_name)) {
+            departmentsMap[employeeId].push(dept.department_name);
+          }
+        });
+      });
+    });
+    
+    return departmentsMap;
+  }, [serviceOrders]);
 
   const handleEditClick = (employee: Employee) => {
-    try {
-      const parsedSchedule = JSON.parse(employee.work_schedule);
-      setEditingEmployee({
-        ...employee,
-        departments: employee.departments || '',
-        work_schedule: JSON.stringify(parsedSchedule, null, 2)
-      });
-    } catch {
-      setEditingEmployee({
-        ...employee,
-        departments: employee.departments || '',
-      });
-    }
+    setEditingEmployee(employee);
   };
 
   const handleUpdateEmployee = async () => {
     if (!editingEmployee) return;
   
     try {
-      // Validar o formato do horário
-      let workSchedule;
-      try {
-        workSchedule = JSON.parse(editingEmployee.work_schedule);
-      } catch (error) {
-        console.error(error);
-        throw new Error('Formato de horário inválido');
-      }
-  
-      // Converter departamentos para array de IDs
-      const departmentIds = departments
-        .filter(dept => editingEmployee.departments.split(',').includes(dept.name))
-        .map(dept => dept.id);
-  
-      const response = await fetch(`http://localhost:3001/api/employee/${editingEmployee.id}`, {
+      const response = await fetch(`https://toprint-project.vercel.app/api/employee/${editingEmployee.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: editingEmployee.name,
           username: editingEmployee.username,
-          departments: departmentIds,
-          work_schedule: workSchedule
-        }),
+        })
       });
   
       if (!response.ok) {
@@ -220,7 +180,7 @@ const EmployeesTable = () => {
       const confirmDelete = window.confirm('Tem certeza que deseja excluir este colaborador?');
       if (!confirmDelete) return;
 
-      const response = await fetch(`http://localhost:3001/api/employee/${id}`, {
+      const response = await fetch(`https://toprint-project.vercel.app/api/employee/${id}`, {
         method: 'DELETE',
       });
 
@@ -241,15 +201,6 @@ const EmployeesTable = () => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
-
-  // const formatWorkScheduleForEdit = (schedule: string) => {
-  //   try {
-  //     const parsed = JSON.parse(schedule);
-  //     return JSON.stringify(parsed, null, 2);
-  //   } catch {
-  //     return schedule;
-  //   }
-  // };
 
   if (error) {
     return <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>;
@@ -279,36 +230,30 @@ const EmployeesTable = () => {
         <>
           <TableContainer>
             <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell sx={{ fontWeight: '600' }}>Nome</TableCell>
-                  <TableCell sx={{ fontWeight: '600' }}>Setores</TableCell>
-                  <TableCell sx={{ fontWeight: '600' }}>Username</TableCell>
-                  <TableCell sx={{ fontWeight: '600' }}>Agenda</TableCell>
-                  <TableCell sx={{ fontWeight: '600' }}>Ações</TableCell>
-                </TableRow>
-              </TableHead>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: '600' }}>Nome</TableCell>
+                <TableCell sx={{ fontWeight: '600' }}>Username</TableCell>
+                <TableCell sx={{ fontWeight: '600' }}>Setores Atuantes</TableCell> {/* Nova coluna */}
+                <TableCell sx={{ fontWeight: '600' }}>Disponibilidade</TableCell>
+                <TableCell sx={{ fontWeight: '600' }}>Ações</TableCell>
+              </TableRow>
+            </TableHead>
               
               <TableBody>
                 {employees.map((employee) => (
                   <TableRow key={employee.id}>
                     <TableCell>{employee.name || 'N/A'}</TableCell>
-                    <TableCell>
-                      {(employee.departments?.split(',') || []).map((department, index) => (
-                        <Chip
-                          key={index}
-                          label={department}
-                          color="secondary"
-                          size="small"
-                          sx={{ mr: 1, mb: 0.5 }}
-                        />
-                      ))}
-                    </TableCell>
                     <TableCell>{employee.username || 'N/A'}</TableCell>
                     <TableCell>
-                      <Box sx={{ minWidth: 200 }}>
-                        {formatWorkSchedule(employee.work_schedule)}
-                      </Box>
+                      {employeeDepartments[employee.id]?.join(', ') || 'Nenhum setor'}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={busyCollaborators.has(employee.id) ? 'Indisponível' : 'Disponível'}
+                        color={busyCollaborators.has(employee.id) ? 'error' : 'success'}
+                        variant="outlined"
+                      />
                     </TableCell>
                     <TableCell>
                       <Button
@@ -381,101 +326,6 @@ const EmployeesTable = () => {
                 onChange={(e) => setEditingEmployee({...editingEmployee, username: e.target.value})}
                 sx={{ mb: 3 }}
               />
-
-          <FormControl fullWidth sx={{ mb: 3 }}>
-            <InputLabel>Setores</InputLabel>
-            <Select
-              multiple
-              value={(editingEmployee.departments || '').split(',').filter(id => id !== '')}
-              onChange={(e) => {
-                const selectedIds = e.target.value as string[];
-                setEditingEmployee({
-                  ...editingEmployee!,
-                  departments: selectedIds.join(',')
-                });
-              }}
-              renderValue={(selected) => selected
-                .map(id => departments.find(d => d.id.toString() === id)?.name || '')
-                .filter(name => name)
-                .join(', ')}
-            >
-              {departments.map((dept) => (
-                <MenuItem key={dept.id} value={dept.id.toString()}>
-                  {dept.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
-<Box sx={{ mb: 3 }}>
-  <Typography variant="subtitle1" gutterBottom>
-    Horário de Trabalho
-  </Typography>
-  {Object.entries({
-    seg: 'Segunda',
-    ter: 'Terça',
-    qua: 'Quarta',
-    qui: 'Quinta',
-    sex: 'Sexta',
-    sab: 'Sábado',
-    dom: 'Domingo'
-  }).map(([dayKey, dayName]) => {
-    const schedule = JSON.parse(editingEmployee.work_schedule || '{}');
-    const times = schedule[dayKey] || [''];
-
-    return (
-      <Box key={dayKey} sx={{ mb: 2 }}>
-        <Typography variant="body2" sx={{ mb: 1 }}>{dayName}</Typography>
-        {times.map((time: string, index: number) => (
-          <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1 }}>
-            <TextField
-              size="small"
-              value={time}
-              onChange={(e) => {
-                const newTimes = [...times];
-                newTimes[index] = e.target.value;
-                const newSchedule = { ...schedule, [dayKey]: newTimes };
-                setEditingEmployee({
-                  ...editingEmployee,
-                  work_schedule: JSON.stringify(newSchedule)
-                });
-              }}
-              placeholder="HH:MM-HH:MM"
-            />
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={() => {
-                const newTimes = times.filter((_: string, i: number) => i !== index);
-                const newSchedule = { ...schedule, [dayKey]: newTimes };
-                setEditingEmployee({
-                  ...editingEmployee,
-                  work_schedule: JSON.stringify(newSchedule)
-                });
-              }}
-            >
-              Remover
-            </Button>
-          </Box>
-        ))}
-        <Button
-          variant="outlined"
-          size="small"
-          onClick={() => {
-            const newTimes = [...times, ''];
-            const newSchedule = { ...schedule, [dayKey]: newTimes };
-            setEditingEmployee({
-              ...editingEmployee,
-              work_schedule: JSON.stringify(newSchedule)
-            });
-          }}
-        >
-          Adicionar Horário
-        </Button>
-      </Box>
-    );
-  })}
-</Box>
             </Box>
           )}
         </DialogContent>
